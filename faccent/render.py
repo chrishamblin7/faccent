@@ -75,7 +75,7 @@ def render_vis(
         img_size = default_img_size
 
     if parameterizer is None:
-        parameterizer = param.fourrier_phase(device=device, img_size = img_size,init_img=init_img)
+        parameterizer = param.fourier(device=device, img_size = img_size,init_img=init_img)
     if init_img is not None:
         print('initializing parameterization with %s'%str(init_img))
         #parameterizer.img_to_params(init_img)
@@ -432,7 +432,7 @@ def render_vis_zoomsmooth(
         img_size = default_img_size
 
     if parameterizer is None:
-        parameterizer = param.fourrier_phase(device=device, img_size = img_size,init_img=init_img)
+        parameterizer = param.fourier(device=device, img_size = img_size,init_img=init_img)
     if init_img is not None:
         print('initializing parameterization with %s'%str(init_img))
         #parameterizer.img_to_params(init_img)

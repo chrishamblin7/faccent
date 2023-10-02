@@ -526,6 +526,87 @@ def cam_maps_from_dataloader(data,
     return cam_maps, target_activations
 
 
+def act_maps_from_dataloader(data,
+                    model,
+                    target_layer,
+                    unit,
+                    position = None,
+                    batch_size = 64, 
+                    num_workers = 2, 
+                    model_input_range=None,
+                    crop=None,
+                    model_input_size=None,
+                            ):
+
+    '''
+    data: [str to image folder, str to image, or dataloader]
+
+    '''
+    DEVICE = next(model.parameters()).device
+    
+    #make data loader
+    if isinstance(data,str):
+        if crop is None:
+            print('crop arg not specified, default is  "True"')
+            crop= True
+        if model_input_size is None:
+            print('model_input_size arg not specified, default is  %s'%str(default_model_input_size))
+            model_input_size = default_model_input_size
+        if model_input_range is None:
+            print('model_input_range arg not specified, default is  %s'%str(default_model_input_range))
+            model_input_range = default_model_input_range
+    if os.path.isfile(data):
+        data = img_to_img_tensor(data, crop=True, size = model_input_size)
+        range_norm = range_normalize(img_range = model_input_range)
+        data = range_norm(data)
+        dataloader = [(data,None)]
+    elif os.path.isdir(data):
+        transforms = []
+        if crop:
+            transforms.append(LargestCenterCrop())
+        transforms.append(Resize(model_input_size))
+        transforms.append(ToTensor())
+        transforms.append(range_normalize(model_input_range))
+        preprocess = Compose(transforms)
+
+        #dataloader
+        kwargs = {'num_workers': num_workers, 'pin_memory': True, 'sampler':None} if 'cuda' in DEVICE.type else {}
+        dataloader = DataLoader(image_data(data, transform=preprocess),
+                            batch_size=batch_size,
+                            shuffle=False,
+                            **kwargs
+                            )        
+        
+    else:
+        data = range_norm(data)
+        dataloader = [(data,None)]
+        #raise NameError('%s does not exist'%data)
+        
+
+    target_activations = []
+    #run data through model, stopping at target and saving activations and gradients throught
+    with feature_target_saver(model,target_layer,unit) as target_saver:
+        for i, data in enumerate(dataloader):
+
+            inputs, label = data
+            inputs = inputs.to(DEVICE)
+
+            model.zero_grad() #very import!
+
+            batch_target_activations = target_saver(inputs)
+            if position == 'middle':
+                batch_target_activations = batch_target_activations[:,batch_target_activations.shape[1]//2,batch_target_activations.shape[2]//2]
+            elif position is not None:
+                batch_target_activations = batch_target_activations[:,position[0],position[1]]
+
+            target_activations.append(batch_target_activations.detach().cpu())
+
+            
+    target_activations = torch.cat(target_activations,dim=0)
+    return target_activations
+
+
+
 
 
 #a function for returning an opacity value given an input cam_score

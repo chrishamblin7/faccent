@@ -47,7 +47,7 @@ def decorrelate_colors(images):
 '''
 
 
-class fourrier_phase():    # magnitude constrained
+class fourier_phase():    # magnitude constrained
 
     def __init__(self, 
                  init_img = None, 
@@ -63,7 +63,7 @@ class fourrier_phase():    # magnitude constrained
                  mag_alpha_init = 5.,
                  color_decorrelate = True,
                  corr_file_path='/'.join(__file__.split('/')[:-1])+"/clean_decorrelated.npy", 
-                 name = 'fourrier_phase'):
+                 name = 'fourier_phase'):
         
         self.name = name
         self.corr_file_path = corr_file_path
@@ -291,7 +291,7 @@ class pixel():
             device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.device = device
 
-        self.standard_transforms = standard_jitter_transforms
+        self.standard_transforms = standard_box_transforms
 
         if init_img is None: self.init_img = init_img
         else: self.init_img = img_to_img_tensor(init_img).to(self.device)
@@ -361,7 +361,7 @@ class pixel():
 
 
 
-class fourrier():
+class fourier():
 
     def __init__(self, 
                  init_img = None,
@@ -374,7 +374,7 @@ class fourrier():
                  normalize_img = False,
                  color_decorrelate = True,
                  desaturation = 5.0, #magic constant from the lucid library
-                 name = 'fourrier'):
+                 name = 'fourier'):
         
         self.sd  = sd
         self.decay_power = decay_power
@@ -397,7 +397,7 @@ class fourrier():
         if init_img is None: self.init_img = init_img
         else: self.init_img = img_to_img_tensor(init_img).to(self.device)
 
-        self.standard_transforms = standard_jitter_transforms
+        self.standard_transforms = standard_box_transforms
 
         #initialize params
         if init_img is None:
@@ -409,7 +409,7 @@ class fourrier():
 
     def random_init(self):
         """
-        initialize the params as a fourrier spectrum with predefined magnitude spectrum
+        initialize the params as a fourier spectrum with predefined magnitude spectrum
         """
 
         init_val_size = (self.batch_size, 3) + self.freqs.shape + (2,) # 2 for imaginary and real components
@@ -445,7 +445,7 @@ class fourrier():
 
     def params_to_img(self):
         """
-        takes a fourrier parameterized image and returns rgb image
+        takes a fourier parameterized image and returns rgb image
         """
 
         params = self.params*self.scale
