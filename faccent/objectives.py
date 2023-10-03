@@ -96,7 +96,7 @@ def handle_batch(batch=None):
 
 
 @wrap_objective()
-def neuron(layer, n_channel, x=None, y=None, batch=None):
+def neuron(layer, unit, x=None, y=None, batch=None):
     """Visualize a single neuron of a single channel.
 
     Defaults to the center neuron. When width and height are even numbers, we
@@ -119,17 +119,26 @@ def neuron(layer, n_channel, x=None, y=None, batch=None):
     def inner(model):
         layer_t = model(layer)
         layer_t = _extract_act_pos(layer_t, x, y)
-        return -layer_t[: ,:, n_channel].mean()
+        if isinstance(unit,int):
+            return -layer_t[: ,:, unit].mean()
+        else:
+            return -dot_product(layer_t, unit.to(layer_t.device)).mean()
+
     return inner
 
 
 @wrap_objective()
-def channel(layer, n_channel, batch=None):
+def channel(layer, unit, batch=None):
     """Visualize a single channel"""
     @handle_batch(batch)
     def inner(model):
-        return -model(layer)[: ,:, n_channel].mean()
+        if isinstance(unit,int):
+            return -model(layer)[: ,:, unit].mean()
+        else:
+            return -dot_product(model(layer), unit.to(model(layer).device)).mean()
     return inner
+
+
 
 @wrap_objective()
 def neuron_weight(layer, weight, x=None, y=None, batch=None):
@@ -441,6 +450,22 @@ def l2_compare(layer, batch=0,comp_batch=1,p=2):
 #     return -torch.norm(x1.flatten()-x2.flatten())
 #   return inner
 
+
+def dot_product(x, y):
+    assert x.shape[2] == y.shape[0], "Mismatch in c dimension"
+    
+    # Handle the (t,b,c,h,w) shape case
+    if len(x.shape) == 5:
+        result = (x * y.unsqueeze(-1).unsqueeze(-1)).sum(dim=2)
+
+    # Handle the (t,b,c) shape case
+    elif len(x.shape) == 3:
+        result = (x * y).sum(dim=2)
+    
+    else:
+        raise ValueError("Unsupported shape for x")
+
+    return result
 
 
 
