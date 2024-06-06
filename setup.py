@@ -8,7 +8,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
 setup(
-    name='faccent', version='1.0.1', 
+    name='faccent', version='1.0.3', 
     packages=find_packages(),
     description='A pytorch tool for feature visualizations of various types',
     long_description=open('README.md').read(),
@@ -25,7 +25,10 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
-    install_requires=requirements
+    install_requires=requirements,
+    package_data={
+        'faccent': ['*.npy'],  # Replace 'your_package_name' with the actual name of your package
+    }
     )
 
 
