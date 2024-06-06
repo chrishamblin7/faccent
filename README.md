@@ -22,7 +22,7 @@ Make the virtual environment available to jupyter notebooks:  `python -m ipykern
 ## Tutorials
 
 See the API_demo notebook, or
-[Open in Colab](https://colab.research.google.com/github/chrishamblin7/faccent/blob/master/API_demo.ipynb)
+<a href="https://colab.research.google.com/github/chrishamblin7/faccent/blob/master/API_demo.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab" /></a>
 
 
 ## License and Disclaimer
