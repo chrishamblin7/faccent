@@ -364,7 +364,7 @@ class hook_model():
             assert layer in self.features, f"Invalid layer {layer}. Retrieve the list of layers with `lucent.modelzoo.util.get_model_layers(model)`."
             out = self.features[layer].features
 
-        assert out is not None, "There are no saved feature maps. Make sure to put the model in eval mode, like so: `model.to(device).eval()`. See README for example."
+        #assert out is not None, "There are no saved feature maps. Make sure to put the model in eval mode, like so: `model.to(device).eval()`. See README for example."
         if nb_transforms is not None:
             return rebatch_transforms(out,nb_transforms=nb_transforms)
         elif self.nb_transforms:
@@ -650,4 +650,3 @@ def render_vis_zoomsmooth(
                     optimizer_f = optimizer(params)
 
     return imgs, img_trs, losses, img_tr_losses #, param_grads
-

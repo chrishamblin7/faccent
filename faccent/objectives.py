@@ -58,14 +58,32 @@ class Objective():
     def __sub__(self, other):
         return self + (-1 * other)
 
+    # def __mul__(self, other):
+    #     if isinstance(other, (int, float)):
+    #         objective_func = lambda model: other * self(model)
+    #         return Objective(objective_func, name=self.name, description=self.description)
+    #     else:
+    #         # Note: In original Lucid library, objectives can be multiplied with non-numbers
+    #         # Removing for now until we find a good use case
+    #         raise TypeError('Can only multiply by int or float. Received type ' + str(type(other)))
+
     def __mul__(self, other):
         if isinstance(other, (int, float)):
+            # Existing functionality for scalar multiplication
             objective_func = lambda model: other * self(model)
             return Objective(objective_func, name=self.name, description=self.description)
+        elif isinstance(other, Objective):
+            # New functionality for multiplying two Objective instances
+            objective_func = lambda model: self(model) * other(model)
+            name = " * ".join(filter(None, [self.name, other.name]))
+            description = "Product(" + " * ".join(filter(None, [self.description, other.description])) + ")"
+            return Objective(objective_func, name=name, description=description)
         else:
-            # Note: In original Lucid library, objectives can be multiplied with non-numbers
-            # Removing for now until we find a good use case
-            raise TypeError('Can only multiply by int or float. Received type ' + str(type(other)))
+            # Type not supported
+            raise TypeError(f'Can only multiply by int, float, or Objective. Received type {type(other)}')
+
+
+
 
     def __truediv__(self, other):
         if isinstance(other, (int, float)):
@@ -96,7 +114,7 @@ def handle_batch(batch=None):
 
 
 @wrap_objective()
-def neuron(layer, unit, x=None, y=None, batch=None):
+def neuron(layer, unit, h=None, w=None, batch=None):
     """Visualize a single neuron of a single channel.
 
     Defaults to the center neuron. When width and height are even numbers, we
@@ -118,7 +136,7 @@ def neuron(layer, unit, x=None, y=None, batch=None):
     @handle_batch(batch)
     def inner(model):
         layer_t = model(layer)
-        layer_t = _extract_act_pos(layer_t, x, y)
+        layer_t = _extract_act_pos(layer_t, h, w)
         if isinstance(unit,int):
             return -layer_t[: ,:, unit].mean()
         else:
@@ -141,14 +159,14 @@ def channel(layer, unit, batch=None):
 
 
 @wrap_objective()
-def neuron_weight(layer, weight, x=None, y=None, batch=None):
+def neuron_weight(layer, weight, h=None, w=None, batch=None):
     """ Linearly weighted channel activation at one location as objective
     weight: a torch Tensor vector same length as channel.
     """
     @handle_batch(batch)
     def inner(model):
         layer_t = model(layer)
-        layer_t = _extract_act_pos(layer_t, x, y)
+        layer_t = _extract_act_pos(layer_t, h, w)
         if weight is None:
             return -layer_t.mean()
         else:
@@ -178,8 +196,9 @@ def localgroup_weight(layer, weight=None, x=None, y=None, wx=1, wy=1, batch=None
             return -(layer_t[:, :, y:y + wy, x:x + wx] * weight.view(1, -1, 1, 1)).mean()
     return inner
 
+
 @wrap_objective()
-def direction(layer, direction, batch=None):
+def direction(layer, direction, batch=None, pos = None):
     """Visualize a direction
 
     InceptionV1 example:
@@ -190,6 +209,7 @@ def direction(layer, direction, batch=None):
         layer: Name of layer in model (string)
         direction: Direction to visualize. torch.Tensor of shape (num_channels,)
         batch: Batch number (int)
+        pos: hxw position in activation map to maximize (tuple)
 
     Returns:
         Objective
@@ -197,31 +217,35 @@ def direction(layer, direction, batch=None):
     """
 
     @handle_batch(batch)
-    def inner(model):
-        return -torch.nn.CosineSimilarity(dim=1)(direction.reshape(
-            (1, -1, 1, 1)), model(layer)).mean()
+    def inner(model,direction = direction):
+        h = model(layer)
+        direction = direction.to(h.device)
+        if len(h.shape) == 3:  #linear layer
+            direction_reshape = direction.reshape((1, 1, -1))
+        else:
+            direction_reshape = direction.reshape((1, 1, -1, 1, 1))
+
+        out = torch.nn.CosineSimilarity(dim=2)(direction_reshape, h)
+        if pos is not None:
+            out = out[:,:, pos[0], pos[1]]
+        return -out.mean()
 
     return inner
 
-
 @wrap_objective()
-def direction_neuron(layer,
-                     direction,
-                     x=None,
-                     y=None,
-                     batch=None):
-    """Visualize a single (x, y) position along the given direction
-
-    Similar to the neuron objective, defaults to the center neuron.
+def cosim(layer, direction, cosine_power = 1, batch=None, pos = None):
+    """Visualize a direction as cosine x dot product
 
     InceptionV1 example:
     > direction = torch.rand(512, device=device)
-    > obj = objectives.direction_neuron(layer='mixed4c', direction=direction)
+    > obj = objectives.direction(layer='mixed4c', direction=direction)
 
     Args:
         layer: Name of layer in model (string)
         direction: Direction to visualize. torch.Tensor of shape (num_channels,)
         batch: Batch number (int)
+        pos: hxw position in activation map to maximize (tuple)
+        cosine_power: power to raise cosine term to
 
     Returns:
         Objective
@@ -229,14 +253,90 @@ def direction_neuron(layer,
     """
 
     @handle_batch(batch)
-    def inner(model):
-        # breakpoint()
-        layer_t = model(layer)
-        layer_t = _extract_act_pos(layer_t, x, y)
-        return -torch.nn.CosineSimilarity(dim=1)(direction.reshape(
-            (1, -1, 1, 1)), layer_t).mean()
+    def inner(model,direction = direction):
+        h = model(layer)
+        direction = direction.to(h.device)
+        if len(h.shape) == 3:  #linear layer
+            direction_reshape = direction.reshape((1, 1, -1))
+        else:
+            direction_reshape = direction.reshape((1, 1, -1, 1, 1))
 
-    return inner
+        cosine = torch.nn.CosineSimilarity(dim=2)(direction_reshape, h)
+        #prevent optimizing towards negative dot and negative cosine
+        thresh_cosine = torch.max(cosine,torch.tensor(.1).to(cosine.device))
+        dot = dot_product(h, direction)
+        out = (thresh_cosine**cosine_power*dot)
+        if pos is not None:
+            out = out = out[:,:, pos[0], pos[1]]
+        return -out.mean()
+
+    return inner   
+
+
+
+
+
+
+
+# @wrap_objective()
+# def direction(layer, direction, batch=None):
+#     """Visualize a direction
+
+#     InceptionV1 example:
+#     > direction = torch.rand(512, device=device)
+#     > obj = objectives.direction(layer='mixed4c', direction=direction)
+
+#     Args:
+#         layer: Name of layer in model (string)
+#         direction: Direction to visualize. torch.Tensor of shape (num_channels,)
+#         batch: Batch number (int)
+
+#     Returns:
+#         Objective
+
+#     """
+
+#     @handle_batch(batch)
+#     def inner(model):
+#         return -torch.nn.CosineSimilarity(dim=1)(direction.reshape(
+#             (1, -1, 1, 1)), model(layer)).mean()
+
+#     return inner
+
+
+# @wrap_objective()
+# def direction_neuron(layer,
+#                      direction,
+#                      h=None,
+#                      w=None,
+#                      batch=None):
+#     """Visualize a single (h, w) position along the given direction
+
+#     Similar to the neuron objective, defaults to the center neuron.
+
+#     InceptionV1 example:
+#     > direction = torch.rand(512, device=device)
+#     > obj = objectives.direction_neuron(layer='mixed4c', direction=direction)
+
+#     Args:
+#         layer: Name of layer in model (string)
+#         direction: Direction to visualize. torch.Tensor of shape (num_channels,)
+#         batch: Batch number (int)
+
+#     Returns:
+#         Objective
+
+#     """
+
+#     @handle_batch(batch)
+#     def inner(model):
+#         # breakpoint()
+#         layer_t = model(layer)
+#         layer_t = _extract_act_pos(layer_t, h, w)
+#         return -torch.nn.CosineSimilarity(dim=1)(direction.reshape(
+#             (1, -1, 1, 1)), layer_t).mean()
+
+#     return inner
 
 
 def _torch_blur(tensor, out_c=3):
@@ -414,19 +514,17 @@ def l1_compare(layer, batch=0,comp_batch=1):
 
 
 @wrap_objective()
-def l2_compare(layer, batch=0,comp_batch=1,p=2):
-#   def inner(T):
-#     x = T(layer) # model output, with additional transform dimension
-#     dot = (x[:,batch] * x[:,comp_batch]).sum(tuple(range(1, (x.dim()-1)))) #dot product 
-#     mag = torch.sqrt((x[:,comp_batch]**2).sum(tuple(range(1, (x.dim()-1)))))
-#     cossim = dot/(1e-6 + mag)
-#     return torch.mean(-dot * cossim ** cossim_pow) #averages across transforms
-#   return inner
-  def inner(T):
+def l2_compare(layer, batch=0,comp_batch=1,p=2, pos=None):
+  def inner(T, pos= pos):
     x = T(layer) # model output, with additional transform dimension
     x1 = x[:,batch]
     x2 = x[:,comp_batch]
     distances = torch.norm(x1-x2,dim=1,p=p)
+
+    if pos is not None:
+        if pos is 'middle':
+            pos = [distances.shape[1]//2,distances.shape[2]//2]
+        distances = distances[:, pos[0], pos[1]]
     return -distances.mean()
   return inner
 
@@ -530,11 +628,6 @@ def cossim_compare(layer, batch=1,comp_batch=0):
 
 
 
-
-
-
-
-
 def as_objective(obj):
     """Convert obj into Objective class.
 
@@ -555,3 +648,70 @@ def as_objective(obj):
         layer, chn = obj.split(":")
         layer, chn = layer.strip(), int(chn)
         return channel(layer, chn)
+
+
+
+@wrap_objective()
+def spatial_channel(layer, target_map, batch=None):
+    """Optimize for different directions at different locations in space
+       target_map: tensor (CxHXW) of layers shape
+    """
+    @handle_batch(batch)
+    def inner(model):
+        map_dot = (model(layer)*target_map.to(model(layer).device)).sum(dim=2)
+        return -map_dot.mean()
+    
+    return inner
+
+
+
+@wrap_objective()
+def spatial_channel_cosim(layer, target_map, cosine_power=1.0, relu_act=False, crop_bounds = None, batch=None):
+    """Optimize for different directions at different locations in space with an additional cosine similarity term
+       target_map: tensor (CxHXW) of layers shape
+       cosine_power: the power to which the cosine similarity is raised
+       relu_act: options(None,'pos','neg') do this computation with respect to the positive are negative terms only
+    """
+    @handle_batch(batch)
+    def inner(model,
+              target_map = target_map,
+              cosine_power = cosine_power,
+              relu_act = relu_act,
+              crop_bounds=crop_bounds):
+        # Get the activation from the model
+        activation = model(layer)
+        
+        # Ensure target_map is on the same device as the model output
+        target_map = target_map.to(activation.device)
+        
+        if crop_bounds is not None:
+            activation = activation[:,:,:,crop_bounds[0][0]:crop_bounds[0][1],crop_bounds[1][0]:crop_bounds[1][1]]
+            target_map = target_map[:,crop_bounds[0][0]:crop_bounds[0][1],crop_bounds[1][0]:crop_bounds[1][1]]
+        
+        # Flatten the CxHxW dimensions to compute dot product and cosine similarity
+        activation_flat = activation.reshape(activation.shape[0], activation.shape[1], -1)  # txbx(c*hxw)
+        target_map_flat = target_map.flatten()
+        
+        if relu_act:
+            mask = (target_map_flat != 0.).float()
+            activation_flat = activation_flat*mask
+            
+        
+        # Compute dot product
+        dot_product = (activation_flat * target_map_flat).sum(dim=2)  # Sum over the flattened CxHxW dimensions
+        
+        # Compute cosine similarity
+        activation_norm = activation_flat.norm(dim=2, keepdim=True)  # Norm over the flattened CxHxW dimensions
+        target_map_norm = target_map_flat.norm()
+        cosine_similarity = (activation_flat * target_map_flat).sum(dim=2) / ((activation_norm * target_map_norm).squeeze())
+        
+        # Raise cosine similarity to the specified power
+        cosine_similarity_powered = cosine_similarity.pow(cosine_power)
+        
+        # Multiply dot product by cosine similarity (raised to the power)
+        objective = -(dot_product * cosine_similarity_powered).mean()  # Average over all dimensions
+        
+        return objective
+
+    return inner
+

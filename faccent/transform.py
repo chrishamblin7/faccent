@@ -174,17 +174,29 @@ def box_crop_2(
 def uniform_gaussian_noise(noise_std=0.02):
 
     def inner(image_t):
-        # add some random noise for the robustness
-        image_t = (
-                    image_t + torch.normal(torch.zeros(image_t.shape), std=noise_std).to(image_t.device)
-                  )  # some normal noise
-        image_t = (
-                    image_t + (torch.rand(image_t.shape, dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
-                  )   # and some uniform noise
+        batch_size = image_t.shape[0]
+        normal_noise = torch.normal(torch.zeros_like(image_t[0]), std=noise_std).to(image_t.device)
+        normal_noise = normal_noise.unsqueeze(0).repeat(batch_size, 1, 1, 1)
+        uniform_noise = (torch.rand_like(image_t[0], dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
+        uniform_noise = uniform_noise.unsqueeze(0).repeat(batch_size, 1, 1, 1)
+        image_t = image_t+normal_noise+uniform_noise
+
         return image_t
     
     return inner
 
+def color_noise(noise_std=.02):
+    def inner(image_t):
+        b,c,h,w = image_t.shape
+        normal_noise = torch.normal(torch.tensor([0.,0.,0.]), std=noise_std).to(image_t.device)
+        normal_noise = normal_noise.view(1,3,1,1).repeat(b, 1, h, w)
+        uniform_noise = (torch.rand_like(torch.tensor([0.,0.,0.]), dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
+        uniform_noise = uniform_noise.view(1,3,1,1).repeat(b, 1, h, w)
+        image_t = image_t+normal_noise+uniform_noise
+
+        return image_t
+    
+    return inner
 
 
 ##EDIT transformations are not computed in parallel :(
@@ -340,264 +352,3 @@ def fast_batch_crop(box_min_size=0.05,
     return inner
 
 
-
-
-#     def inner(image_t):
-#         """
-#         Args: 
-#             x (model input tensor): 
-#             batch_idx
-#         Returns:
-#             batch tensor of shape (b,c,h,w)
-#         """
-#         #ensure image formatting is correct
-#         #x = image_to_tensor(x)
-
-#         x = image_t[-1]
-#         im_c, im_w, im_h = x.shape
-
-#         # sample box size uniformely in [min_size, max_size]
-#         delta_x = torch.rand(nb_crops) * (box_max_size - box_min_size) + box_min_size
-#         delta_y = delta_x
-#         # sample box x0,y0 in [0,1-box_size/img_size]
-#         # here we sample around normally around image center,
-#         # but uniform sampling works also
-#         x0 = torch.clamp(
-#             torch.randn(nb_crops) * box_loc_std + 0.5, delta_x / 2.0, 1 - delta_x / 2.0
-#         )
-#         y0 = torch.clamp(
-#             torch.randn(nb_crops) * box_loc_std + 0.5, delta_y / 2.0, 1 - delta_y / 2.0
-#         )
-#         # build boxes
-#         boxes = torch.stack(
-#             [
-#                 (x0 - delta_x / 2.0) * im_w,
-#                 (y0 - delta_y / 2.0) * im_h,
-#                 (x0 + delta_x / 2.0) * im_w,
-#                 (y0 + delta_y / 2.0) * im_h,
-#             ],
-#             -1,
-#         )
-#         boxes = boxes.int()
-
-#         x = torch.cat(
-#             [
-#                 F.interpolate(
-#                     x[None, :, x0:x1, y0:y1],
-#                     img_size,
-#                     mode="bilinear",
-#                     antialias=True,
-#                     align_corners=True,
-#                 )
-#                 for x0, y0, x1, y1 in boxes
-#             ],
-#             0,
-#         )
-
-#         # add some random noise for the robustness
-#         x = (
-#             x + torch.normal(torch.zeros(x.shape), std=noise_std).to(image_t.device)
-#         )  # some normal noise
-#         x = (
-#             x + (torch.rand(x.shape, dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
-#         )  # and some uniform noise
-
-#         other = F.interpolate(
-#                             image_t[:-1],
-#                             img_size,
-#                             mode="bilinear",
-#                             antialias=True,
-#                             align_corners=True
-#                             )
-
-#         y = torch.concatenate([other,x])
-#         return y
-    
-#     return inner
-
-
-
-
-
-
-#     return inner
-
-
-
-
-# def uniform_gaussian_noise(noise_std=0.02):
-
-#     def inner(image_t):
-#         # add some random noise for the robustness
-#         image_t = (
-#                     image_t + torch.normal(torch.zeros(image_t.shape), std=noise_std).to(image_t.device)
-#                   )  # some normal noise
-#         image_t = (
-#                     image_t + (torch.rand(image_t.shape, dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
-#                   )   # and some uniform noise
-#         return image_t
-    
-#     return inner
-
-
-# def range_normalize(img_range = default_model_input_range):
-#     def inner(image_t):
-#         return image_t*(img_range[1] - img_range[0]) + img_range[0]
-#     return inner
-
-# def resize(img_size=default_model_input_size):
-#     def inner(image_t):
-#         return F.interpolate(image_t, 
-#                              size=img_size,
-#                              mode="bilinear",
-#                              antialias=True,
-#                              align_corners=True)
-#     return inner
-
-
-
-
-
-# def box_crop_2(
-#     box_min_size=0.05,
-#     box_max_size=0.99
-# ):
-#     """returns a function that will take an image and randomly crop it into a batch.
-
-#     Args:
-#         box_min_size (float, optional): minimum box size (as fraction of canvas size). 
-#         box_max_size (float, optional): maximum box size (as fraction of canvas size). 
-
-#     Returns:
-#         (callable): a function that takes an image tensor of shape (b,c,h,w)
-#                     and returns a batch tensor of shape (b,c,h,w).
-#     """
-#     def inner(image_t):
-#         x = image_t
-#         im_b, im_c, im_w, im_h = x.shape
-
-#         # Sample box size uniformly in [min_size, max_size]
-#         delta_x = torch.rand(1) * (box_max_size - box_min_size) + box_min_size
-#         delta_y = delta_x
-
-#         # Sample top-left corner x0, y0 uniformly from 'in bounds' regions
-#         max_x0 = 1 - delta_x
-#         max_y0 = 1 - delta_y
-#         x0 = torch.rand(1) * max_x0
-#         y0 = torch.rand(1) * max_y0
-
-#         # Crop image
-#         x = x[
-#             :, 
-#             :, 
-#             int(x0 * im_w): int((x0 + delta_x) * im_w), 
-#             int(y0 * im_h): int((y0 + delta_y) * im_h)
-#         ]
-
-#         return x
-
-#     return inner
-
-
-
-
-
-
-
-# def batch_box_transforms(
-#     box_min_size=0.85,
-#     box_max_size=0.95,
-#     box_loc_std=0.05,
-#     noise_std=0.05,
-#     nb_crops=32,
-#     img_size = default_model_input_size
-# ):
-#     """returns a function that will take an image and randomly crop it into a batch.
-
-#     Args:
-#         box_min_size (float, optional): minimum box size (as fraction of canevas size). Defaults to 0.10.
-#         box_max_size (float, optional): minimum box size (as fraction of canevas size). Defaults to 0.35.
-#         box_loc_std (float, optional): std of box positions (sampled normally around image center). Defaults to 0.2.
-#         noise_std (float, optional): std of the noise added to the image. Defaults to 0.05.
-#         nb_crops (int, optional): number of crops used to build the batch. Defaults to 32.
-#         model_input_size (tuple, optional): once the crop is made it is interpolated to this size
-
-#     Returns:
-#         (callable): a function that takes an image tensor of shape (b,c,h,w)
-#                     and returns a batch tensor of shape (b+nb_crops-1,c,h,w).
-#                     This function operates on the last image in the batch,
-#                     replacing it with cropped resized versions.
-#     """
-
-#     def inner(image_t):
-#         """
-#         Args: 
-#             x (model input tensor): 
-#             batch_idx
-#         Returns:
-#             batch tensor of shape (b,c,h,w)
-#         """
-#         #ensure image formatting is correct
-#         #x = image_to_tensor(x)
-
-#         x = image_t[-1]
-#         im_c, im_w, im_h = x.shape
-
-#         # sample box size uniformely in [min_size, max_size]
-#         delta_x = torch.rand(nb_crops) * (box_max_size - box_min_size) + box_min_size
-#         delta_y = delta_x
-#         # sample box x0,y0 in [0,1-box_size/img_size]
-#         # here we sample around normally around image center,
-#         # but uniform sampling works also
-#         x0 = torch.clamp(
-#             torch.randn(nb_crops) * box_loc_std + 0.5, delta_x / 2.0, 1 - delta_x / 2.0
-#         )
-#         y0 = torch.clamp(
-#             torch.randn(nb_crops) * box_loc_std + 0.5, delta_y / 2.0, 1 - delta_y / 2.0
-#         )
-#         # build boxes
-#         boxes = torch.stack(
-#             [
-#                 (x0 - delta_x / 2.0) * im_w,
-#                 (y0 - delta_y / 2.0) * im_h,
-#                 (x0 + delta_x / 2.0) * im_w,
-#                 (y0 + delta_y / 2.0) * im_h,
-#             ],
-#             -1,
-#         )
-#         boxes = boxes.int()
-
-#         x = torch.cat(
-#             [
-#                 F.interpolate(
-#                     x[None, :, x0:x1, y0:y1],
-#                     img_size,
-#                     mode="bilinear",
-#                     antialias=True,
-#                     align_corners=True,
-#                 )
-#                 for x0, y0, x1, y1 in boxes
-#             ],
-#             0,
-#         )
-
-#         # add some random noise for the robustness
-#         x = (
-#             x + torch.normal(torch.zeros(x.shape), std=noise_std).to(image_t.device)
-#         )  # some normal noise
-#         x = (
-#             x + (torch.rand(x.shape, dtype=torch.float32).to(image_t.device) - 0.5) * noise_std
-#         )  # and some uniform noise
-
-#         other = F.interpolate(
-#                             image_t[:-1],
-#                             img_size,
-#                             mode="bilinear",
-#                             antialias=True,
-#                             align_corners=True
-#                             )
-
-#         y = torch.concatenate([other,x])
-#         return y
-    
-#     return inner

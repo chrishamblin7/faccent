@@ -11,3 +11,4 @@ timm
 seaborn==0.12.2
 ipywidgets==8.0.7
 scipy==1.7.3
+imageio

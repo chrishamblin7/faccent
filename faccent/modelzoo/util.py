@@ -19,12 +19,12 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 
-def get_model_layers(model, getLayerRepr=False):
+def get_model_layers(model, getLayerRepr=False, getLayer=False):
     """
     If getLayerRepr is True, return a OrderedDict of layer names, layer representation string pair.
     If it's False, just return a list of layer names
     """
-    layers = OrderedDict() if getLayerRepr else []
+    layers = OrderedDict() if (getLayerRepr or getLayer) else []
     # recursive function to get layers
     def get_layers(net, prefix=[]):
         if hasattr(net, "_modules"):
@@ -34,9 +34,13 @@ def get_model_layers(model, getLayerRepr=False):
                     continue
                 if getLayerRepr:
                     layers["_".join(prefix+[name])] = layer.__repr__()
+                if getLayer:
+                    layers["_".join(prefix+[name])] = layer
                 else:
                     layers.append("_".join(prefix + [name]))
                 get_layers(layer, prefix=prefix+[name])
 
     get_layers(model)
     return layers
+
+
