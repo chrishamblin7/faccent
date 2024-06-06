@@ -3,8 +3,12 @@
 
 from setuptools import setup, find_packages
 
+# Read requirements.txt and install
+with open('requirements.txt') as f:
+    requirements = f.read().splitlines()
+
 setup(
-    name='faccent', version='1.0', 
+    name='faccent', version='1.0.1', 
     packages=find_packages(),
     description='A pytorch tool for feature visualizations of various types',
     long_description=open('README.md').read(),
@@ -21,6 +25,7 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
+    install_requires=requirements
     )
 
 

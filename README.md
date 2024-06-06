@@ -6,7 +6,7 @@ feature accentuation: image-seeded feature visualizations
 
 ### with PIP
 
-pip install faccent==1.0
+pip install faccent
 
 ### or with github
 
