@@ -1,5 +1,5 @@
 # faccent
-feature accentuation: image-seeded feature visualizations
+This is the official repository for the paper [feature accentuation: revealing 'what' features respond to in natural images](https://arxiv.org/abs/2402.10039)
 
 
 ## Setup
