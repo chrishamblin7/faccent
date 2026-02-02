@@ -232,6 +232,38 @@ def direction(layer, direction, batch=None, pos = None):
 
     return inner
 
+
+@wrap_objective()
+def l2_direction(layer, direction, batch=None):
+    """Minimize L2 distance to a target direction vector.
+    
+    Args:
+        layer: Name of layer in model (string)
+        direction: Target direction to match. torch.Tensor of shape (num_features,)
+        batch: Batch number (int)
+    
+    Returns:
+        Objective that minimizes L2 distance to direction
+    """
+    @handle_batch(batch)
+    def inner(model, direction=direction):
+        h = model(layer)
+        direction = direction.to(h.device)
+        
+        # Handle different tensor shapes
+        if len(h.shape) == 3:  # (t, b, c) - linear layer with transforms
+            direction_reshape = direction.reshape((1, 1, -1))
+        elif len(h.shape) == 5:  # (t, b, c, h, w) - conv layer with transforms
+            direction_reshape = direction.reshape((1, 1, -1, 1, 1))
+        else:
+            raise ValueError(f"Unexpected activation shape: {h.shape}")
+        
+        # Compute L2 distance (negative because faccent minimizes the objective)
+        l2_dist = torch.norm(h - direction_reshape, dim=2)
+        return l2_dist.mean()  # Positive = minimize distance
+    
+    return inner
+
 @wrap_objective()
 def cosim(layer, direction, cosine_power = 1, batch=None, pos = None):
     """Visualize a direction as cosine x dot product
